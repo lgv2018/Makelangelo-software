@@ -1,78 +1,76 @@
 package com.marginallyclever.makelangelo.select;
 
+import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
-import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.LineBorder;
 
 import com.marginallyclever.convenience.ColorRGB;
-import com.marginallyclever.convenience.GridBagConstraintsLabel;
-import com.marginallyclever.convenience.GridBagConstraintsValue;
-import com.marginallyclever.makelangelo.Translator;
 
-public class SelectColor extends JPanel implements ActionListener {
+/**
+ * A color selection dialog
+ * @author Dan Royer
+ * @since 7.24.0
+ */
+public class SelectColor extends Select {
+	private JLabel label;
+	private JLabel field;
+	private JButton chooseButton;
+	
 	/**
 	 * 
+	 * @param parent a component (JFrame, JPanel) that owns the color selection dialog
+	 * @param labelValue
+	 * @param defaultValue
 	 */
-	private static final long serialVersionUID = 1328306913825662751L;
-	private JLabel label;
-	private JLabel fieldValue;
-	private JButton chooseButton;
-	private JComponent parent;
-	
-	public SelectColor(JComponent parent,String labelValue,ColorRGB defaultValue) {
-		this.parent = parent;
-		this.setLayout(new GridBagLayout());
-		GridBagConstraints labelConstraint = new GridBagConstraintsLabel();
-		GridBagConstraints fieldConstraint = new GridBagConstraintsValue();
+	public SelectColor(Component parent,String labelValue,ColorRGB defaultValue) {
+		super();
+		
+		label = new JLabel(labelValue,JLabel.LEADING);
 
-		//labelConstraint.insets = new Insets(3,3,3,3);
+		field = new JLabel("");
+		field.setOpaque(true);
+		field.setMinimumSize(new Dimension(80,20));
+		field.setMaximumSize(field.getMinimumSize());
+		field.setPreferredSize(field.getMinimumSize());
+		field.setSize(field.getMinimumSize());
+		field.setBackground(new Color(defaultValue.toInt()));
+		field.setBorder(new LineBorder(Color.BLACK));
 
-		//fieldConstraint.insets = new Insets(3,3,3,1);
+		chooseButton = new JButton("...");
+		chooseButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				Color c = JColorChooser.showDialog(parent, label.getText(), field.getBackground());
+				field.setBackground(c);
+				setChanged();
+				notifyObservers();
+			}
+		});
 
-		GridBagConstraints buttonConstraint = new GridBagConstraints();
-		buttonConstraint.anchor = GridBagConstraints.WEST;
-		buttonConstraint.gridwidth = 1;
-		buttonConstraint.gridx = fieldConstraint.gridwidth + fieldConstraint.gridx;
-		buttonConstraint.gridy=0;
-		buttonConstraint.insets = new Insets(0,0,0,3);
-
-		label = new JLabel(Translator.get(labelValue));
-		this.add(label, labelConstraint);
-
-		fieldValue = new JLabel("");
-		fieldValue.setOpaque(true);
-		fieldValue.setMinimumSize(new Dimension(80,20));
-		fieldValue.setMaximumSize(fieldValue.getMinimumSize());
-		fieldValue.setPreferredSize(fieldValue.getMinimumSize());
-		fieldValue.setSize(fieldValue.getMinimumSize());
-		fieldValue.setBackground(new Color(defaultValue.toInt()));
-
-		fieldValue.setBorder(new LineBorder(Color.BLACK));
-		this.add(fieldValue, fieldConstraint);
-
-		chooseButton = new JButton(Translator.get("Choose"));
-		chooseButton.addActionListener(this);
-		this.add(chooseButton, buttonConstraint);
-	}
-
-	@Override
-	public void actionPerformed(ActionEvent e) {
-		Color c = JColorChooser.showDialog(parent, label.getText(), fieldValue.getBackground());
-		fieldValue.setBackground(c);
+		JPanel panel2 = new JPanel(new BorderLayout());
+		panel2.add(field,BorderLayout.LINE_END);
+		
+		panel.add(label,BorderLayout.LINE_START);
+		panel.add(panel2,BorderLayout.CENTER);
+		panel.add(chooseButton,BorderLayout.LINE_END);
 	}
 	
 	public ColorRGB getColor() {
-		Color c = fieldValue.getBackground();
+		Color c = field.getBackground();
 		return new ColorRGB(c.getRed(),c.getGreen(),c.getBlue());
+	}
+	
+	public void setColor(ColorRGB c) {
+		field.setBackground(new Color(c.red,c.green,c.blue));
+		setChanged();
+		notifyObservers();
 	}
 }

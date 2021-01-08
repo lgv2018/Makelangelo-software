@@ -1,54 +1,32 @@
 package com.marginallyclever.artPipeline.converters;
 
-import java.awt.GridLayout;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
-
-import javax.swing.JComboBox;
-import javax.swing.JLabel;
+import java.util.Observable;
 
 import com.marginallyclever.makelangelo.Translator;
 import com.marginallyclever.makelangelo.select.SelectFloat;
+import com.marginallyclever.makelangelo.select.SelectOneOfMany;
 
-public class Converter_Moire_Panel extends ImageConverterPanel implements PropertyChangeListener, ActionListener {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	Converter_Moire converter;
-	
-	SelectFloat   sizeField;	
-	JComboBox<String> directionChoices;
+public class Converter_Moire_Panel extends ImageConverterPanel {
+	private Converter_Moire converter;
+	private SelectFloat scaleField;	
+	private SelectOneOfMany directionChoices;
 	
 	public Converter_Moire_Panel(Converter_Moire arg0) {
-		this.converter=arg0;
+		super();
+		converter=arg0;
 
-		this.setLayout(new GridLayout(0, 1));
-		this.add(new JLabel(Translator.get("HilbertCurveSize")));
-		this.add(sizeField = new SelectFloat(converter.getScale()));
+		add(scaleField = new SelectFloat(Translator.get("HilbertCurveSize"),converter.getScale()));
+		add(directionChoices = new SelectOneOfMany(Translator.get("Direction"),converter.getDirections(),converter.getDirectionIndex()));
+		finish();
+	}
 
-		this.add(directionChoices = new JComboBox<>(converter.getDirections()));
-		directionChoices.setSelectedIndex(converter.getDirectionIndex());
+	@Override
+	public void update(Observable o, Object arg) {
+		// TODO Auto-generated method stub
+		super.update(o, arg);
 		
-		sizeField.addPropertyChangeListener("value",this);
-		directionChoices.addActionListener(this);
-	}
-
-	private void validateInput() {
-		converter.setScale(((Number)sizeField.getValue()).floatValue());
+		converter.setScale(scaleField.getValue());
 		converter.setDirectionIndex(directionChoices.getSelectedIndex());
-		if(loadAndSaveImage!=null) loadAndSaveImage.reconvert();
-	}
-
-	@Override
-	public void actionPerformed(ActionEvent arg0) {
-		validateInput();		
-	}
-
-	@Override
-	public void propertyChange(PropertyChangeEvent evt) {
-		validateInput();
+		converter.restart();
 	}
 }

@@ -19,6 +19,7 @@ import org.apache.batik.bridge.UserAgentAdapter;
 import org.apache.batik.dom.svg.SVGItem;
 import org.apache.batik.util.XMLResourceDescriptor;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.w3c.dom.svg.SVGDocument;
 import org.w3c.dom.svg.SVGPathSeg;
@@ -31,10 +32,11 @@ import org.w3c.dom.svg.SVGPointList;
 
 import com.marginallyclever.artPipeline.ImageManipulator;
 import com.marginallyclever.convenience.ColorRGB;
+import com.marginallyclever.convenience.Point2D;
 import com.marginallyclever.convenience.StringHelper;
 import com.marginallyclever.convenience.Turtle;
+import com.marginallyclever.convenience.log.Log;
 import com.marginallyclever.makelangelo.Translator;
-import com.marginallyclever.makelangelo.log.Log;
 import com.marginallyclever.makelangeloRobot.MakelangeloRobot;
 
 /**
@@ -47,7 +49,6 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 	
 	protected boolean shouldScaleOnLoad = true;
 	
-	protected double maxX,minX,maxY,minY;
 	protected double scale,imageCenterX,imageCenterY;
 	protected double toolMinimumStepSize = 1; //mm
 	
@@ -78,10 +79,8 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 		Document document = newDocumentFromInputStream(in);
 		initSVGDOM(document);
 
-		// prepare for exporting
+		// prepare for importing
 		machine = robot.getSettings();
-		minX = minY =Double.MAX_VALUE;
-		maxX = maxY =-Double.MAX_VALUE;
 		imageCenterX=imageCenterY=0;
 		scale=1;
 		
@@ -95,11 +94,15 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 			return false;
 		}
 		
-		imageCenterX = ( maxX + minX ) / 2.0;
-		imageCenterY = -( maxY + minY ) / 2.0;
+		Point2D top = new Point2D();
+		Point2D bottom = new Point2D();
+		
+		turtle.getBounds(top, bottom);
+		imageCenterX = ( top.x + bottom.x ) / 2.0;
+		imageCenterY = -( top.y + bottom.y ) / 2.0;
 
-		double imageWidth  = maxX - minX;
-		double imageHeight = maxY - minY;
+		double imageWidth  = top.x - bottom.x;
+		double imageHeight = top.y - bottom.y;
 
 		// add 2% for margins
 
@@ -132,22 +135,22 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 	}
 	
 	protected boolean parseAll(Document document) {
-		NodeList pathNodes = ((SVGOMSVGElement)document.getDocumentElement()).getElementsByTagName( "path" );
-		boolean loadOK = parsePathElements(pathNodes);
-		if(loadOK) {
-			pathNodes = ((SVGOMSVGElement)document.getDocumentElement()).getElementsByTagName( "polyline" );
-			loadOK = parsePolylineElements(pathNodes);
-		}
-		if(loadOK) {
-			pathNodes = ((SVGOMSVGElement)document.getDocumentElement()).getElementsByTagName( "polygon" );
-			loadOK = parsePolylineElements(pathNodes);
-		}
+		SVGOMSVGElement documentElement = (SVGOMSVGElement)document.getDocumentElement();
+
+		boolean    loadOK = parsePathElements(    documentElement.getElementsByTagName( "path"     ));
+		if(loadOK) loadOK = parsePolylineElements(documentElement.getElementsByTagName( "polyline" ));
+		if(loadOK) loadOK = parsePolylineElements(documentElement.getElementsByTagName( "polygon"  ));
+		if(loadOK) loadOK = parseLineElements(    documentElement.getElementsByTagName( "line"     ));
+		if(loadOK) loadOK = parseRectElements(    documentElement.getElementsByTagName( "rect"     ));
+		if(loadOK) loadOK = parseCircleElements(  documentElement.getElementsByTagName( "circle"   ));
+		if(loadOK) loadOK = parseEllipseElements( documentElement.getElementsByTagName( "ellipse"  ));
 		return loadOK;
 	}
 
 	protected double TX(double x) {
 		return ( x - imageCenterX ) * scale;
 	}
+	
 	protected double TY(double y) {
 		return ( y - imageCenterY ) * -scale;
 	}
@@ -161,31 +164,21 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 		
 	    int pathNodeCount = pathNodes.getLength();
 	    for( int iPathNode = 0; iPathNode < pathNodeCount; iPathNode++ ) {
-	    	SVGPointShapeElement pathElement = ((SVGPointShapeElement)pathNodes.item( iPathNode ));
+	    	SVGPointShapeElement pathElement = (SVGPointShapeElement)pathNodes.item( iPathNode );
 	    	SVGPointList pointList = pathElement.getAnimatedPoints();
 	    	int numPoints = pointList.getNumberOfItems();
 			//Log.message("New Node has "+pathObjects+" elements.");
-			
-	    	boolean first=true;
-			for( int i=0; i<numPoints; ++i ) {
-				SVGPoint  item = (SVGPoint) pointList.getItem(i);
-				boolean doJump=false;
-				
-				if(first) {
-					first=false;
-					if(distanceSquared(item,turtle.getX(),turtle.getY())>4) {
-						doJump=true;
-					}
-				}
 
-				double x = TX( item.getX() );
-				double y = TY( item.getY() );
-				adjustLimits(x,y);
-				if(doJump) {
-					turtle.jumpTo(x,y);
-				} else {
-					turtle.moveTo(x,y);
-				}
+			SVGPoint item = (SVGPoint)pointList.getItem(0);
+			double x = TX( item.getX() );
+			double y = TY( item.getY() );
+			turtle.jumpTo(x,y);
+			
+			for( int i=1; i<numPoints; ++i ) {
+				item = (SVGPoint)pointList.getItem(i);
+				x = TX( item.getX() );
+				y = TY( item.getY() );
+				turtle.moveTo(x,y);
 			}
 		}
 	    return loadOK;
@@ -206,6 +199,166 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 		double dy=y-previousY;
 		
 		return dx*dx+dy*dy;
+	}
+	
+	
+	protected boolean parseLineElements(NodeList node) {
+		try {
+		    int pathNodeCount = node.getLength();
+		    for( int iPathNode = 0; iPathNode < pathNodeCount; iPathNode++ ) {
+				Element element = (Element)node.item( iPathNode );
+				double x1=0,y1=0;
+				double x2=0,y2=0;
+				
+				if(element.hasAttribute("x1")) x1 = Double.parseDouble(element.getAttribute("x1"));
+				if(element.hasAttribute("y1")) y1 = Double.parseDouble(element.getAttribute("y1"));
+				if(element.hasAttribute("x2")) x2 = Double.parseDouble(element.getAttribute("x2"));
+				if(element.hasAttribute("y2")) y2 = Double.parseDouble(element.getAttribute("y2"));;
+				turtle.jumpTo(TX(x1),TY(y1));
+				turtle.moveTo(TX(x2),TY(y2));
+		    }
+		} catch(Exception e) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Draw rectangles that may have rounded corners.
+	 * given corners
+	 *    x0 x1 x2 x3
+	 * y0    a  b
+	 * y1 c  i  j  d
+	 * y2 e  m  k  f
+	 * y3    g  h
+	 * draw a-b-d-f-h-g-e-c-a.
+	 * 
+	 * See https://developer.mozilla.org/en-US/docs/Web/SVG/Element/rect
+	 * @param node
+	 * @return
+	 */
+	protected boolean parseRectElements(NodeList node) {
+		try {
+		    int pathNodeCount = node.getLength();
+		    for( int iPathNode = 0; iPathNode < pathNodeCount; iPathNode++ ) {
+				Element element = (Element)node.item( iPathNode );
+				double x=0,y=0;
+				double rx=0,ry=0;
+				
+				if(element.hasAttribute("x")) x = Double.parseDouble(element.getAttribute("x"));
+				if(element.hasAttribute("y")) y = Double.parseDouble(element.getAttribute("y"));
+				
+				if(element.hasAttribute("rx")) {
+					rx = Double.parseDouble(element.getAttribute("rx"));
+					if(element.hasAttribute("ry")) {
+						ry = Double.parseDouble(element.getAttribute("ry"));
+					} else {
+						// ry defaults to rx if specified
+						ry = rx;
+					}
+				} else if(element.hasAttribute("ry")) {
+					// rx defaults to ry if specified
+					rx = ry = Double.parseDouble(element.getAttribute("ry"));
+					
+				}
+				double w = Double.parseDouble(element.getAttribute("width"));
+				double h = Double.parseDouble(element.getAttribute("height"));
+				
+				//double x0=x;
+				double x1=x+rx;
+				double x2=x+w-rx;
+				//double x3=x+w;
+				double y0=y;
+				double y1=y+ry;
+				double y2=y+h-ry;
+				//double y3=y+h;
+
+				turtle.jumpTo(TX(x1),TY(y0));
+				arcTurtle(turtle, x2,y1, rx,ry, Math.PI * -0.5,Math.PI *  0.0); 
+				arcTurtle(turtle, x2,y2, rx,ry, Math.PI *  0.0,Math.PI *  0.5);
+				arcTurtle(turtle, x1,y2, rx,ry, Math.PI * -1.5,Math.PI * -1.0);
+				arcTurtle(turtle, x1,y1, rx,ry, Math.PI * -1.0,Math.PI * -0.5);
+		    }
+		} catch(Exception e) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * 
+	 * @param turtle 
+	 * @param cx center position
+	 * @param cy center position
+	 * @param rx radius on X
+	 * @param ry radius on Y
+	 * @param p0 radian start angle.
+	 * @param p1 radian end angle.
+	 */
+	protected void arcTurtle(Turtle turtle,double cx,double cy,double rx,double ry,double p0,double p1) {
+		double steps=1;
+		if(rx>0 && ry>0) {
+			double r = rx>ry?rx:ry;
+			double circ = Math.PI*r*2.0;  // radius to circumference 
+			steps = Math.ceil(circ/4.0);  // 1/4 circumference
+			steps = Math.max(steps,1);
+		}
+		steps = steps/4;
+		for(double p = 0;p<=steps;++p) {
+			double pFraction = ((p1-p0)*(p/steps) + p0);
+			double c = Math.cos(pFraction) * rx;
+			double s = Math.sin(pFraction) * ry;
+			turtle.moveTo(TX(cx+c), TY(cy+s));
+		}
+	}
+	
+	protected boolean parseCircleElements(NodeList node) {
+		try {
+		    int pathNodeCount = node.getLength();
+		    for( int iPathNode = 0; iPathNode < pathNodeCount; iPathNode++ ) {
+				Element element = (Element)node.item( iPathNode );
+				double cx=0,cy=0,r=0;
+				if(element.hasAttribute("cx")) cx = Double.parseDouble(element.getAttribute("cx"));
+				if(element.hasAttribute("cy")) cy = Double.parseDouble(element.getAttribute("cy"));
+				if(element.hasAttribute("r" )) r  = Double.parseDouble(element.getAttribute("r"));
+				turtle.jumpTo(TX(cx+r),TY(cy));
+				for(double i=1;i<40;++i) {  // hard coded 40?  gross!
+					double v = (Math.PI*2.0) * (i/40.0);
+					double s=r*Math.sin(v);
+					double c=r*Math.cos(v);
+					turtle.moveTo(TX(cx+c),TY(cy+s));
+				}
+				turtle.moveTo(TX(cx+r),TY(cy));
+		    }
+		} catch(Exception e) {
+			return false;
+		}
+		return true;
+	}
+
+	protected boolean parseEllipseElements(NodeList node) {
+		try {
+		    int pathNodeCount = node.getLength();
+		    for( int iPathNode = 0; iPathNode < pathNodeCount; iPathNode++ ) {
+				Element element = (Element)node.item( iPathNode );
+				double cx=0,cy=0,rx=0,ry=0;
+				if(element.hasAttribute("cx")) cx = Double.parseDouble(element.getAttribute("cx"));
+				if(element.hasAttribute("cy")) cy = Double.parseDouble(element.getAttribute("cy"));
+				if(element.hasAttribute("rx")) rx = Double.parseDouble(element.getAttribute("rx"));
+				if(element.hasAttribute("ry")) ry = Double.parseDouble(element.getAttribute("ry"));
+				turtle.jumpTo(TX(cx+rx),TY(cy));
+				for(double i=1;i<40;++i) {  // hard coded 40?  gross!
+					double v = (Math.PI*2.0) * (i/40.0);
+					double s=ry*Math.sin(v);
+					double c=rx*Math.cos(v);
+					turtle.moveTo(TX(cx+c),TY(cy+s));
+				}
+				turtle.moveTo(TX(cx+rx),TY(cy));
+		    }
+		} catch(Exception e) {
+			return false;
+		}
+		return true;
 	}
 	
 	/**
@@ -248,26 +401,16 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 						SVGPathSegMovetoAbs path = (SVGPathSegMovetoAbs)item;
 						firstX = x = TX( path.getX() );
 						firstY = y = TY( path.getY() );
-						if(distanceSquared(firstX,firstY,turtle.getX(),turtle.getY())>4) {
-							turtle.jumpTo(firstX,firstY);
-						} else {
-							turtle.moveTo(firstX, firstY);
-						}
-						adjustLimits(x,y);
+						turtle.jumpTo(firstX,firstY);
 					}
-				break;
+					break;
 				case SVGPathSeg.PATHSEG_MOVETO_REL:  // M
 					{
 						//Log.message("Move Rel");
 						SVGPathSegMovetoAbs path = (SVGPathSegMovetoAbs)item;
 						firstX = x = TX( path.getX() ) + turtle.getX();
 						firstY = y = TY( path.getY() ) + turtle.getY();
-						if(distanceSquared(firstX,firstY,turtle.getX(),turtle.getY())>4) {
-							turtle.jumpTo(firstX,firstY);
-						} else {
-							turtle.moveTo(firstX, firstY);
-						}
-						adjustLimits(x,y);
+						turtle.jumpTo(firstX,firstY);
 					}
 					break;
 				case SVGPathSeg.PATHSEG_LINETO_ABS:  // l
@@ -276,9 +419,7 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 						SVGPathSegLinetoAbs path = (SVGPathSegLinetoAbs)item;
 						x = TX( path.getX() );
 						y = TY( path.getY() );
-						turtle.penDown();
 						turtle.moveTo(x,y);
-						adjustLimits(x,y);
 					}
 					break;
 				case SVGPathSeg.PATHSEG_LINETO_REL:  // L
@@ -287,17 +428,13 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 						SVGPathSegLinetoAbs path = (SVGPathSegLinetoAbs)item;
 						x = TX( path.getX() ) + turtle.getX();
 						y = TY( path.getY() ) + turtle.getY();
-						turtle.penDown();
 						turtle.moveTo(x,y);
-						adjustLimits(x,y);
 					}
 					break;
 				case SVGPathSeg.PATHSEG_CURVETO_CUBIC_ABS: // c
 					{
 						//Log.message("Curve Cubic Abs");
 						SVGPathSegCurvetoCubicAbs path = (SVGPathSegCurvetoCubicAbs)item;
-
-						turtle.penDown();
 						
 						// x0,y0 is the first point
 						double x0=x;
@@ -375,30 +512,22 @@ public class LoadAndSaveSVG extends ImageManipulator implements LoadAndSaveFileT
 								x=xabc;
 								y=yabc;
 								turtle.moveTo(xabc,yabc);
-								adjustLimits(xabc,yabc);
 							//}
 						}
 						turtle.moveTo(x3,y3);
-						adjustLimits(x3,y3);
 					}
 					break; 
 				default:
 					Log.message("Found unexpected SVG Path type "+item.getPathSegTypeAsLetter()
 						+" "+item.getPathSegType()+" = "+((SVGItem)item).getValueAsString());
 					loadOK=false;
+					break;
 				}
 			}
 		}
 	    return loadOK;
 	}
 	
-	
-	protected void adjustLimits(double x,double y) {
-		if(minX>x) minX = x;
-		if(maxX<x) maxX = x;
-		if(minY>y) minY = y;
-		if(maxY<y) maxY = y;
-	}
 
 	protected double p(double a,double b,double fraction) {
 		return ( b - a ) * fraction + a;

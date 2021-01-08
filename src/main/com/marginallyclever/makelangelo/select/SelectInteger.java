@@ -1,38 +1,89 @@
 package com.marginallyclever.makelangelo.select;
 
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
 import java.text.NumberFormat;
 import java.util.Locale;
 
 import javax.swing.JFormattedTextField;
+import javax.swing.JLabel;
+import javax.swing.JTextField;
+import javax.swing.UIManager;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.text.DefaultFormatterFactory;
 import javax.swing.text.NumberFormatter;
 
 /**
- * A JFormattedTextField that sets itself up to format floating point numbers. 
+ * A JFormattedTextField that sets itself up to format integers. 
  * @author Dan Royer
- * @since 7.8.0
+ * @since 7.24.0
  */
-public class SelectInteger extends JFormattedTextField {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 8222996536287315655L;
+public class SelectInteger extends Select {
+	private JLabel label;
+	private JFormattedTextField field;
+	private int value;
 
-	public SelectInteger(Locale locale,int defaultValue) {
+	public SelectInteger(String labelKey,Locale locale,int defaultValue) {
 		super();
+		
+		value = defaultValue;
+		
+		label = new JLabel(labelKey,JLabel.LEADING);
+		field = new JFormattedTextField(); 
 		createAndAttachFormatter(locale);
-		this.setValue((Integer)defaultValue);
+		Dimension d = field.getPreferredSize();
+		d.width = 100;
+		field.setPreferredSize(d);
+		field.setMinimumSize(d);
+		field.setValue((Integer)defaultValue);
+		field.setHorizontalAlignment(JTextField.RIGHT);
+
+		field.getDocument().addDocumentListener(new DocumentListener() {
+			@Override
+			public void changedUpdate(DocumentEvent arg0) {
+				validate();
+			}
+
+			@Override
+			public void insertUpdate(DocumentEvent arg0) {
+				validate();
+			}
+
+			@Override
+			public void removeUpdate(DocumentEvent arg0) {
+				validate();
+			}
+			
+			public void validate() {
+				int newNumber;
+				
+				try {
+					newNumber = Integer.valueOf(field.getText());
+					field.setForeground(UIManager.getColor("Textfield.foreground"));
+					if(value != newNumber) {
+						value = newNumber;
+						setChanged();
+						notifyObservers();
+					}
+				} catch(NumberFormatException e1) {
+					field.setForeground(Color.RED);
+					return;
+				}
+			}
+		});
+
+		panel.add(label,BorderLayout.LINE_START);
+		panel.add(field,BorderLayout.LINE_END);
 	}
 
-	public SelectInteger(Locale locale) {
-		super();
-		createAndAttachFormatter(locale);
+	public SelectInteger(String labelKey,Locale locale) {
+		this(labelKey,locale,0);
 	}
 	
-	public SelectInteger(int defaultValue) {
-		super();
-		createAndAttachFormatter(Locale.getDefault());
-		this.setValue((Integer)defaultValue);
+	public SelectInteger(String labelKey,int defaultValue) {
+		this(labelKey,Locale.getDefault(),defaultValue);
 	}
 	
 	public SelectInteger() {
@@ -46,10 +97,21 @@ public class SelectInteger extends JFormattedTextField {
 		
 		NumberFormatter nff = new NumberFormatter(nFloat);
 		DefaultFormatterFactory factory = new DefaultFormatterFactory(nff);
-		setFormatterFactory(factory);
+		field.setFormatterFactory(factory);
 	}
 	
 	public void setReadOnly() {
-		setEditable(false);
+		field.setEditable(false);
+	}
+	
+	/**
+	 * @return last valid integer typed into field.
+	 */
+	public int getValue() {
+		return value;
+	}
+	
+	public void setValue(int arg0) {
+		field.setText(Integer.toString(arg0));
 	}
 }

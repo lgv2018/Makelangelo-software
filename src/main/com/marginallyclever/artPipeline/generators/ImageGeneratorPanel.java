@@ -1,13 +1,12 @@
 package com.marginallyclever.artPipeline.generators;
 
-import javax.swing.JPanel;
-
+import com.marginallyclever.makelangelo.select.SelectPanel;
 import com.marginallyclever.makelangeloRobot.MakelangeloRobotPanel;
 
-public class ImageGeneratorPanel extends JPanel {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	public MakelangeloRobotPanel makelangeloRobotPanel; 
+public class ImageGeneratorPanel extends SelectPanel {
+	static public MakelangeloRobotPanel makelangeloRobotPanel; 
+	
+	protected ImageGeneratorPanel() {
+		super();
+	}
 }

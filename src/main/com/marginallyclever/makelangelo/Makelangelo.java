@@ -36,12 +36,13 @@ import javax.swing.JSplitPane;
 import javax.swing.KeyStroke;
 
 import com.jogamp.opengl.GLCapabilities;
+import com.jogamp.opengl.GLException;
 import com.jogamp.opengl.GLProfile;
 import com.jogamp.opengl.util.FPSAnimator;
 import com.marginallyclever.communications.ConnectionManager;
 import com.marginallyclever.communications.NetworkConnection;
-import com.marginallyclever.makelangelo.log.Log;
-import com.marginallyclever.makelangelo.log.LogPanel;
+import com.marginallyclever.convenience.log.Log;
+import com.marginallyclever.convenience.log.LogPanel;
 import com.marginallyclever.makelangelo.preferences.MakelangeloAppPreferences;
 import com.marginallyclever.makelangelo.preferences.MetricsPreferences;
 import com.marginallyclever.makelangeloRobot.MakelangeloRobot;
@@ -55,9 +56,8 @@ import com.marginallyclever.util.PropertiesFileHelper;
 /**
  * The root window of the GUI
  * 
- * @author danroyer
- * @author Peter Colapietro
- * @since 0.0.1?
+ * @author Dan Royer
+ * @since 0.0.1
  */
 public final class Makelangelo
 		implements ActionListener, WindowListener, MakelangeloRobotListener, MakelangeloRobotSettingsListener {
@@ -101,7 +101,7 @@ public final class Makelangelo
 	private Splitter splitUpDown;
 
 	// OpenGL window
-	private DrawPanel drawPanel;
+	private PreviewPanel drawPanel;
 	// Context sensitive menu
 	private MakelangeloRobotPanel robotPanel;
 	// Bottom of window
@@ -152,24 +152,22 @@ public final class Makelangelo
 	}
 	
 	public void run() {
-		Log.message("starting translator...");
 		Translator.start();
 		
-		Log.message("starting GUI...");
 		createAndShowGUI();
-
-		Log.message("checking sharing permissions...");
+		
 		checkSharingPermission();
 
-		Log.message("checking for updates...");
 		if (preferences.getBoolean("Check for updates", false))
 			checkForUpdate(true);
 	}
 
 	// check if we need to ask about sharing
 	protected void checkSharingPermission() {
+		Log.message("checking sharing permissions...");
+		
 		final String SHARING_CHECK_STRING = "Last version sharing checked";
-				
+		
 		String v = preferences.get(SHARING_CHECK_STRING,"0");
 		int comparison = VERSION.compareTo(v);
 		if(comparison!=0) {
@@ -214,11 +212,14 @@ public final class Makelangelo
 	 * @return the refreshed menu bar
 	 */
 	public JMenuBar createMenuBar() {
+		Log.message("Create menu bar");
+
 		menuBar = new JMenuBar();
 
 		JMenu menu;
 
 		// File menu
+		Log.message("  file...");
 		menu = new JMenu(Translator.get("MenuMakelangelo"));
 		menuBar.add(menu);
 
@@ -236,9 +237,8 @@ public final class Makelangelo
 		buttonExit.addActionListener(this);
 		menu.add(buttonExit);
 
-		// preferences
-
 		// view menu
+		Log.message("  view...");
 		menu = new JMenu(Translator.get("MenuPreview"));
 		menuBar.add(menu);
 		
@@ -254,11 +254,14 @@ public final class Makelangelo
 				KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()));
 		menu.add(buttonZoomIn);
 
-		buttonZoomToFit = new JMenuItem(Translator.get("ZoomFit"));
+		buttonZoomToFit = new JMenuItem(Translator.get("ZoomFit"), KeyEvent.VK_0);
+		buttonZoomToFit.setAccelerator(
+				KeyStroke.getKeyStroke(KeyEvent.VK_0, Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()));
 		buttonZoomToFit.addActionListener(this);
 		menu.add(buttonZoomToFit);
 
 		// help menu
+		Log.message("  help...");
 		menu = new JMenu(Translator.get("Help"));
 		menuBar.add(menu);
 
@@ -270,8 +273,8 @@ public final class Makelangelo
 		buttonAbout.addActionListener(this);
 		menu.add(buttonAbout);
 		
-		
 		// finish
+		Log.message("  finish...");
 		menuBar.updateUI();
 
 		return menuBar;
@@ -282,6 +285,7 @@ public final class Makelangelo
 	 * redirect notice to find the latest release tag.
 	 */
 	public void checkForUpdate(boolean announceIfFailure) {
+		Log.message("checking for updates...");
 		try {
 			URL github = new URL("https://github.com/MarginallyClever/Makelangelo-Software/releases/latest");
 			HttpURLConnection conn = (HttpURLConnection) github.openConnection();
@@ -350,34 +354,48 @@ public final class Makelangelo
 	}
 
 	public Container createContentPane() {
-		// Create the content-pane-to-be.
+		Log.message("create content pane...");
+
 		contentPane = new JPanel(new BorderLayout());
 		contentPane.setOpaque(true);
 
-		GLProfile glProfile = GLProfile.getDefault();
-		GLCapabilities caps = new GLCapabilities(glProfile);
-		// caps.setSampleBuffers(true);
-		// caps.setHardwareAccelerated(true);
-		// caps.setNumSamples(4);
-		// */
-		drawPanel = new DrawPanel(caps);
+		Log.message("  get GL capabilities...");
+		try {
+			GLProfile glProfile = GLProfile.getDefault();
+			GLCapabilities caps = new GLCapabilities(glProfile);
+			// caps.setSampleBuffers(true);
+			// caps.setHardwareAccelerated(true);
+			// caps.setNumSamples(4);
+			Log.message("  create draw panel...");
+			drawPanel = new PreviewPanel(caps);
+		} catch(GLException e) {
+			Log.error("I failed the very first call to OpenGL.  Are your native libraries missing?");
+			System.exit(1);
+		}
+		
+		Log.message("  set robot...");
 		drawPanel.setRobot(robot);
 
+		Log.message("  assign panel to robot...");
 		robotPanel = robot.createControlPanel(this);
 
+		Log.message("  create log panel...");
 		logPanel = new LogPanel(robot);
 
 		// major layout
+		Log.message("  vertical split...");
 		splitLeftRight = new Splitter(JSplitPane.HORIZONTAL_SPLIT);
 		splitLeftRight.add(drawPanel);
 		splitLeftRight.add(robotPanel);
 
+		Log.message("  horizontal split...");
 		splitUpDown = new Splitter(JSplitPane.VERTICAL_SPLIT);
 		splitUpDown.add(splitLeftRight);
 		splitUpDown.add(logPanel);
 
 		contentPane.add(splitUpDown, BorderLayout.CENTER);
 
+		Log.message("  tweak...");
 		splitUpDown.setResizeWeight(0.9);
 		splitUpDown.setOneTouchExpandable(true);
 		splitUpDown.setDividerLocation(800);
@@ -391,42 +409,51 @@ public final class Makelangelo
 	// For thread safety, this method should be invoked from the
 	// event-dispatching thread.
 	public void createAndShowGUI() {
-		// Create and set up the window.
+		Log.message("Creating GUI...");
+		
 		mainFrame = new JFrame(Translator.get("TitlePrefix")+" "+this.VERSION);
 		mainFrame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		mainFrame.addWindowListener(this);
-		mainFrame.setJMenuBar(createMenuBar());
-		mainFrame.setContentPane(createContentPane());
+		
+		JMenuBar bar = createMenuBar();
+		Log.message("  adding menu bar...");
+		mainFrame.setJMenuBar(bar);
+		
+		Container contentPane = createContentPane();
+		mainFrame.setContentPane(contentPane);
+		
 		adjustWindowSize();
+		
+		Log.message("  make visible...");
 		mainFrame.setVisible(true);
+
 		drawPanel.zoomToFitPaper();
 
-		// add the drag & drop support
+		Log.message("  adding drag & drop support...");
 		mainFrame.setTransferHandler(myTransferHandler);
 
 		// start animation system
-		animator = new FPSAnimator(20);
+		Log.message("  starting animator...");
+		animator = new FPSAnimator(1);
 		animator.add(drawPanel);
 		animator.start();
 	}
 
 	private void adjustWindowSize() {
-		int maxWidth = DEFAULT_WINDOW_WIDTH;
-		int maxHeight = DEFAULT_WINDOW_HEIGHT;
-		int width = preferences.getInt("Default window width", maxWidth);
-		int height = preferences.getInt("Default window height", maxHeight);
+		Log.message("adjust window size...");
+		
+		int width = preferences.getInt("Default window width", DEFAULT_WINDOW_WIDTH);
+		int height = preferences.getInt("Default window height", DEFAULT_WINDOW_HEIGHT);
 
 		// Get default screen size
 		Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-		maxWidth = screenSize.width;
-		maxHeight = screenSize.height;
 
 		// Set window size
-		if (width > maxWidth || height > maxHeight) {
-			width = maxWidth;
-			height = maxHeight;
-			preferences.putInt("Default window width", maxWidth);
-			preferences.putInt("Default window height", maxHeight);
+		if (width > screenSize.width || height > screenSize.height) {
+			width = screenSize.width;
+			height = screenSize.height;
+			preferences.putInt("Default window width", width);
+			preferences.putInt("Default window height", height);
 		}
 
 		mainFrame.setSize(width, height);

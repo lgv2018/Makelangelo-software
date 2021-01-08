@@ -13,6 +13,7 @@ import java.util.Set;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import org.kabeja.dxf.Bounds;
+import org.kabeja.dxf.DXFCircle;
 import org.kabeja.dxf.DXFConstants;
 import org.kabeja.dxf.DXFDocument;
 import org.kabeja.dxf.DXFEntity;
@@ -33,8 +34,8 @@ import com.marginallyclever.artPipeline.ImageManipulator;
 import com.marginallyclever.convenience.ColorRGB;
 import com.marginallyclever.convenience.MathHelper;
 import com.marginallyclever.convenience.Turtle;
+import com.marginallyclever.convenience.log.Log;
 import com.marginallyclever.makelangelo.Translator;
-import com.marginallyclever.makelangelo.log.Log;
 import com.marginallyclever.makelangeloRobot.MakelangeloRobot;
 import com.marginallyclever.makelangeloRobot.settings.MakelangeloRobotSettings;
 
@@ -109,10 +110,32 @@ public class LoadAndSaveDXF extends ImageManipulator implements LoadAndSaveFileT
 				DXFEntity e = iter.next();
 				DXFBucketEntity be = new DXFBucketEntity(e);
 				
-				if (e.getType().equals(DXFConstants.ENTITY_TYPE_LINE)) {
+				if(e.getType().equals(DXFConstants.ENTITY_TYPE_LINE)) {
 					DXFLine line = (DXFLine)e;
 					grid.addEntity(be, line.getStartPoint());
 					grid.addEntity(be, line.getEndPoint());
+					continue;
+				}
+				if(e.getType().equals(DXFConstants.ENTITY_TYPE_CIRCLE)) {
+					DXFCircle circle = (DXFCircle)e;
+					double r = circle.getRadius();
+					Point center = circle.getCenterPoint();
+					double cx = center.getX();
+					double cy = center.getY();
+
+					Point a = new Point(cx+r,cy,0);
+					Point b = new Point();
+					for(double i=1;i<=40;++i) {  // hard coded 40?  gross!
+						double v = (Math.PI*2.0) * (i/40.0);
+						double s=r*Math.sin(v);
+						double c=r*Math.cos(v);
+						b.setX(cx+c);
+						b.setY(cy+s);
+						grid.addEntity(be, a);
+						grid.addEntity(be, b);
+						a.setX(b.getX());
+						a.setY(b.getY());
+					}
 					continue;
 				}
 				if(e.getType().equals(DXFConstants.ENTITY_TYPE_SPLINE)) {
@@ -530,9 +553,9 @@ public class LoadAndSaveDXF extends ImageManipulator implements LoadAndSaveFileT
 						out.write("0\nLINE\n");
 						out.write("8\n1\n");  // layer 1
 						out.write("10\n"+MathHelper.roundOff3(x0)+"\n");
-						out.write("20\n"+MathHelper.roundOff3(-y0)+"\n");
+						out.write("20\n"+MathHelper.roundOff3(y0)+"\n");
 						out.write("11\n"+MathHelper.roundOff3(m.x)+"\n");
-						out.write("21\n"+MathHelper.roundOff3(-m.y)+"\n");
+						out.write("21\n"+MathHelper.roundOff3(m.y)+"\n");
 					}
 					x0=m.x;
 					y0=m.y;

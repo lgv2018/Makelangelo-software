@@ -12,7 +12,7 @@ import com.marginallyclever.convenience.Point2D;
 import com.marginallyclever.convenience.Turtle;
 import com.marginallyclever.convenience.Turtle.MoveType;
 import com.marginallyclever.convenience.Turtle.Movement;
-import com.marginallyclever.makelangelo.log.Log;
+import com.marginallyclever.convenience.log.Log;
 import com.marginallyclever.makelangeloRobot.settings.MakelangeloRobotSettings;
 
 /**
@@ -21,9 +21,15 @@ import com.marginallyclever.makelangeloRobot.settings.MakelangeloRobotSettings;
  * 
  */
 public class ArtPipeline {
+	/** 
+	 * line segments with color 
+	 * @author Dan Royer
+	 *
+	 */
 	public class Line2D {
 		public Point2D a,b;
 		public ColorRGB c;
+		public boolean flag;
 
 		public Line2D(Point2D a, Point2D b, ColorRGB c) {
 			super();
@@ -33,22 +39,54 @@ public class ArtPipeline {
 		}
 		
 		public void flip() {
-			Point2D c=b;
+			Point2D temp=b;
 			b=a;
-			a=c;
+			a=temp;
+		}
+		public String toString() {
+			return "("+a.x+","+a.y+")-("+b.x+","+b.y+")";
+		}
+		public double physicalLengthSquared() {
+			double dx=a.x-b.x;
+			double dy=a.y-b.y;
+			return dx*dx + dy*dy;
+		}
+		
+		public double ptSegDistSq(Point2D point) {
+			// The distance measured is the distance between the specified point,
+			// and the closest point between the start and end points of line a. 
+			return java.awt.geom.Line2D.ptSegDistSq(a.x, a.y, b.x, b.y, point.x, point.y);
+		}
+		
+		public double ptLineDistSq(Point2D point) {
+			// The distance measured is the distance between the specified point,
+			// and the closest point on the infinite extension of line a.
+			return java.awt.geom.Line2D.ptLineDistSq(a.x, a.y, b.x, b.y, point.x, point.y);
 		}
 	}
-	public class Segment2D {
+	
+	/**
+	 * A sequence of 2D lines forming a polyline.
+	 * the end of line [n] should match the start of line [n+1].
+	 * if end of [last] matches start of [0] then this is a closed loop.
+	 * @author Dan Royer
+	 *
+	 */
+	public class Sequence2D {
 		public ArrayList<Line2D> lines;
 		boolean isClosed;
 		
-		public Segment2D() {
+		public Sequence2D() {
 			lines = new ArrayList<Line2D>();
 			isClosed=false;
 		}
 		
 		public void flip() {
-			Collections.reverse(lines);
+			try {
+				Collections.reverse(lines);
+			} catch(Exception e) {
+				e.printStackTrace();
+			}
 			for( Line2D line : lines ) {
 				line.flip();
 			}
@@ -56,6 +94,38 @@ public class ArtPipeline {
 	}
 	
 	protected ArtPipelinePanel myPanel;
+	
+	protected ArrayList<ArtPipelineListener> listeners = new ArrayList<ArtPipelineListener>();
+	
+	public void addListener(ArtPipelineListener arg0) {
+		listeners.add(arg0);
+	}
+	
+	public void removeListener(ArtPipelineListener arg0) {
+		listeners.remove(arg0);
+	}
+	
+	public void notifyListenersTurtleFinished(Turtle t) {
+		for(ArtPipelineListener p : listeners) {
+			p.turtleFinished(t);
+		}
+	}
+	
+	private void extendLine(Line2D targetLine, Point2D extPoint) {
+		// extPoint is supposed to be a point which lies (almost) on the infinite extension of targetLine
+		double newLengthA = distanceBetweenPointsSquared(targetLine.a, extPoint);
+		double newLengthB = distanceBetweenPointsSquared(targetLine.b, extPoint);
+		double currentLength = targetLine.physicalLengthSquared();
+		
+		// Maximize length of target line by replacing the start or end point with the extPoint		
+		if(newLengthA > currentLength && newLengthA > newLengthB) {
+			// Draw line from targetLine.a to extPoint
+			targetLine.b = extPoint;
+		} else if(newLengthB > currentLength) {
+			// Draw line from extPoint to targetLine.b 
+			targetLine.a = extPoint;
+		}
+	}
 	
 	/**
 	 * Offers to look for a better route through the turtle history that means fewer travel moves.
@@ -65,26 +135,30 @@ public class ArtPipeline {
 	public void reorder(Turtle turtle, MakelangeloRobotSettings settings) {
 		if(turtle.history.size()==0) return;
 		
-		Log.message("checkReorder() begin");
+		Log.message("reorder() begin");
 		// history is made of changes, travels, and draws
 		// look at the section between two changes.
 		//   look at all pen down moves in the section.
-		//     if two pen down moves share a start/end, then they are connected and belong in a single segment.
+		//     if two pen down moves share a start/end, then they are connected in sequence.
 		
 		// build a list of all the pen-down lines while remembering their color.
 		ArrayList<Line2D> originalLines = new ArrayList<Line2D>();
 		Movement previousMovement=null;
 		ColorRGB color = new ColorRGB(0,0,0);
+
+		Log.message("  Found "+turtle.history.size()+" instructions.");
 		
 		for( Movement m : turtle.history ) {
 			switch(m.type) {
 			case DRAW:
 				if(previousMovement!=null) {
 					Line2D line = new Line2D(
-							new Point2D(m.x,m.y),
 							new Point2D(previousMovement.x,previousMovement.y),
+							new Point2D(m.x,m.y),
 							color);
-					originalLines.add(line);
+					if(line.physicalLengthSquared()>0) {
+						originalLines.add(line);
+					}
 				}
 				previousMovement = m;
 				break;
@@ -96,191 +170,216 @@ public class ArtPipeline {
 				break;
 			}
 		}
-
-		Log.message("  Found "+turtle.history.size()+" instructions.");
-		int total = originalLines.size();
-		Log.message("  Found "+total+" lines.");
-
-		// now sort the lines into contiguous groups.
-		// from any given "active" line, search all remaining lines for a match
-		// if a match is found, add it to the sorted list and make the match into the active line.
-		// repeat until all lines exhausted.  this is O(n*n) hard and pretty slow.
-		/// TODO sort the lines into subgroups for faster searching?
-		ArrayList<Segment2D> segments = new ArrayList<Segment2D>();
-		Segment2D activeSegment=null;
-		boolean found=false;
-		Line2D activeLine=null;
-		int sorted=0;
-		int matched=0;
 		
-		while(!originalLines.isEmpty()) {
-			if(found==false) {
-				// either this is the first time OR 
-				// ( we found no connecting lines AND there are still originalLines left )
-				// start a new segment.
-				activeSegment = new Segment2D();
-				segments.add(activeSegment);
-				// get a new active line
-				activeLine = originalLines.remove(0);
-				// put the active line in the active segment.
-				activeSegment.lines.add(activeLine);
-				// do some metrics
-				sorted++;
-				//Log.message("  "+StringHelper.formatDouble(100*(double)sorted/(double)total)+"%");
+		int nrOfOriginalLines = originalLines.size();
+
+		Log.message("  Converted to "+nrOfOriginalLines+" lines.");
+
+		final double EPSILON = 0.01;
+		final double EPSILON2 = EPSILON*EPSILON;
+		double EPSILON_CONNECTED=0.5;  // TODO: make this user-tweakable. Is it in millimeters? 
+
+		ArrayList<Line2D> uniqueLines = new ArrayList<Line2D>();
+		
+		// TODO: dedupe should be optional so user can reorder without dedupe, or dedupe without reorder
+		// remove duplicate lines.
+		// TODO: how to handle duplicate lines with different colors? 
+
+		for(Line2D candidateLine : originalLines) {
+			int b = 0;
+			int end = uniqueLines.size();
+			boolean isDuplicate = false;
+			Line2D lineToReplace = null;
+			
+			// Compare this line to all the lines previously marked as non-duplicate
+			while (b < end) {
+				Line2D uniqueLine = uniqueLines.get(b);	
+				++b;
+				
+				// Check first if lines are (almost) parallel
+				/*
+				double dx1 = uniqueLine.b.x - uniqueLine.a.x;
+				double dy1 = uniqueLine.b.y - uniqueLine.a.y;
+				double dx2 = candidateLine.b.x - candidateLine.a.x;
+				double dy2 = candidateLine.b.y - candidateLine.a.y;
+				
+				double cosAngle = Math.abs((dx1 * dx2 + dy1 * dy2) / Math.sqrt((dx1 * dx1 + dy1 * dy1) * (dx2 * dx2 + dy2 * dy2)));
+				
+				// Check if lines have the same angle with a tolerance of 0.25 degrees
+				if(cosAngle < 0.99999048) {
+					// Not parallel, check remaining lines for duplicates
+					continue;
+				}
+				*/
+				
+				// Check if lines are (almost) colinear
+				if(uniqueLine.ptLineDistSq(candidateLine.a) < EPSILON2 && uniqueLine.ptLineDistSq(candidateLine.b) < EPSILON2){
+					// Both lines are (almost) colinear,
+					// if they touch they can be merged
+					boolean candidateStartsCloseToUnique = uniqueLine.ptSegDistSq(candidateLine.a) < EPSILON2;
+					boolean candidateEndsCloseToUnique = uniqueLine.ptSegDistSq(candidateLine.b) < EPSILON2;
+					boolean uniqueStartsCloseToCandidate = candidateLine.ptSegDistSq(uniqueLine.a) < EPSILON2;
+					boolean uniqueEndsCloseToCandidate = candidateLine.ptSegDistSq(uniqueLine.b) < EPSILON2;
+					
+					if(candidateStartsCloseToUnique) {
+						isDuplicate = true;
+						
+						if(candidateEndsCloseToUnique) {
+							// Candidate doesn't add anything which isn't already covered by the unique line.
+							// No further action needed.
+							
+							// TODO: extend the line, to ensure no gaps will arise due to the configured tolerance?
+							// extendLine(uniqueLine, candidateLine.a);
+							// extendLine(uniqueLine, candidateLine.b);
+						} else {
+							// Partial overlap, extend uniqueLine
+							extendLine(uniqueLine, candidateLine.b);
+						}
+					} else if(candidateEndsCloseToUnique) {
+						isDuplicate = true;
+						// Partial overlap, extend uniqueLine
+						extendLine(uniqueLine, candidateLine.a);						
+					} else if(uniqueStartsCloseToCandidate) {
+						if(uniqueEndsCloseToCandidate) {
+							// The candidateLine covers more than the unique line already added,
+							// replace uniqueLine with candidateLine.
+							lineToReplace = uniqueLine;
+							// No further action needed.
+						} else {
+							isDuplicate = true;
+							// Partial overlap, extend uniqueLine
+							extendLine(uniqueLine, candidateLine.a);
+						}
+					} else {
+						// No match, check remaining lines for duplicates
+						continue;
+					}
+					
+					// Match found, no need to continue search
+					break;
+				}
 			}
 			
-			found=false;
-			// find any line that starts or ends where this line ends.
-			for( Line2D toSort : originalLines ) {
-				// only compare similar color lines
-				if(toSort.c.equals(activeLine.c)==false) continue;
-				
-				// check if activeLine's end is also toSort's start.
-				if(thesePointsAreTheSame(activeLine.b,toSort.a)) {
-					// put it in the sorted lines
-					activeSegment.lines.add(toSort);
-					originalLines.remove(toSort);
-					// make it the new segment head
-					activeLine = toSort;
-					// do some metrics
-					matched++;
-					// do it all again!
-					found=true;
-					break;
+			if(!isDuplicate) {
+				if(lineToReplace != null) {
+					uniqueLines.remove(lineToReplace);
 				}
-				// check if activeLine's end is also toSort's end.
-				else if(thesePointsAreTheSame(activeLine.b,toSort.b)) {
-					// yes!  toSort is backwards.  flip toSort
-					toSort.flip();
-					// then put it in the sorted lines
-					activeSegment.lines.add(toSort);
-					originalLines.remove(toSort);
-					// and make it the new segment head
-					activeLine = toSort;
-					// do some metrics
-					matched++;
-					// do it all again!
-					found=true;
-					break;
-				}
-			}
-
-			// set up a reverse pass.
-			activeSegment.flip();
-			// with the activeSegment.lines flipped, activeLine is now pointing at the tail.
-			activeLine = activeSegment.lines.get(activeSegment.lines.size()-1);
-
-			// find any line that starts or ends where this line ends.
-			for( Line2D toSort : originalLines ) {
-				// only compare similar color lines
-				if(toSort.c.equals(activeLine.c)==false) continue;
-				
-				if(thesePointsAreTheSame(activeLine.b,toSort.a)) {
-					// found!
-					// put it in the sorted lines
-					activeSegment.lines.add(toSort);
-					originalLines.remove(toSort);
-					// make it the new segment head
-					activeLine = toSort;
-					// do some metrics
-					matched++;
-					// do it all again!
-					found=true;
-					break;
-				}
-				// check if there's a match with end B.
-				else if(thesePointsAreTheSame(activeLine.b,toSort.b)) {
-					// found!
-					// oldLine follows activeLine but both are backwards.  flip both
-					toSort.flip();
-					// then put it in the sorted lines
-					activeSegment.lines.add(toSort);
-					originalLines.remove(toSort);
-					// and make it the new segment head
-					activeLine = toSort;
-					// do some metrics
-					matched++;
-					// do it all again!
-					found=true;
-					break;
-				}
-			}//*/
-			// yea tho we searched every originalLine left, there were no matches to be found.
-			// do it all again from the top.
-		}
-
-		// all original lines are now sorted into segments.
-		int closed=0;
-		for( Segment2D seg : segments ) {
-			seg.isClosed = thesePointsAreTheSame(
-					seg.lines.get(0).a,
-					seg.lines.get(seg.lines.size()-1).b);
-			if(seg.isClosed) closed++;
-		}
-		
-		// try to reorganize segments to shorten travels
-		int flipped=0;
-		for( int i=0;i<segments.size()-1;++i ) {
-			Segment2D a=segments.get(i);
-			Segment2D b=segments.get(i+1);
-			Line2D bLastLine = b.lines.get(b.lines.size()-1);
-			Point2D aEnd = a.lines.get(0).b;
-			if( distanceBetweenPointsSquared(aEnd,bLastLine.a)>
-				distanceBetweenPointsSquared(aEnd,bLastLine.b) ) {
-				// segment b could be flipped to reduce the travel distance.
-				flipped++;
-				b.flip();
+				// candidateLine does not match any line in the list.
+				uniqueLines.add(candidateLine);					
 			}
 		}
 		
-		// rebuild the turtle history.
+		int duplicates = nrOfOriginalLines - uniqueLines.size();
+		Log.message("  - "+duplicates+" duplicates = "+uniqueLines.size()+" lines.");
+		
 		Turtle t = new Turtle();
 		// I assume the turtle history starts at the home position.
 		t.setX(turtle.history.get(0).x);
 		t.setY(turtle.history.get(0).y);
-		t.penUp();
 		
-		for( Segment2D seg : segments ) {
-			Line2D head = seg.lines.get(0);
+		ArrayList<Line2D> orderedLines = new ArrayList<Line2D>();
+		
+		Point2D lastPosition = new Point2D(t.getX(), t.getY());
+		
+		// Greedy reorder lines
+		while(!uniqueLines.isEmpty()) {
+			// Continue for as long as there are lines to reorder
+			double bestD = Double.MAX_VALUE;
+			int bestCandidateIndex = 0;
+			int candidateIndex = 0;
+			int end = uniqueLines.size();
+			boolean shouldFlip = false;
+			
+			while (candidateIndex < end) {
+				// Check all remaining lines, and pick the one with the start or end point
+				// closest to lastPosition (the end point of the previous line).
+				Line2D candidateLine = uniqueLines.get(candidateIndex);
+				double distanceToStartPoint = distanceBetweenPointsSquared(lastPosition, candidateLine.a);
+				double distanceToEndPoint = distanceBetweenPointsSquared(lastPosition, candidateLine.b);
+				
+				boolean shouldFlipCandidate = false;
+				double smallestCandidateDistance = distanceToStartPoint;
+				
+				if(distanceToEndPoint < distanceToStartPoint) {
+					// The end point is closer than the start point.
+					// Line should be flipped if it's the best candidate in this iteration.
+					shouldFlipCandidate = true;
+					smallestCandidateDistance = distanceToEndPoint;
+				}
+				
+				if(smallestCandidateDistance < bestD) {
+					// This line outperforms the previous candidate,
+					// use values from this line instead
+					shouldFlip = shouldFlipCandidate;
+					bestD = smallestCandidateDistance;
+					bestCandidateIndex = candidateIndex;
+				}
+				
+				++candidateIndex;
+			}
+			
+			// Found line closest to lastPosition,
+			// remove it from the pool
+			Line2D bestCandidate = uniqueLines.remove(bestCandidateIndex);
+			if(shouldFlip) {
+				// Distance is shortest when this line is flipped
+				bestCandidate.flip();
+			}
+			
+			// And add it to the list of reordered lines.
+			orderedLines.add(bestCandidate);
+			// Start next iteration where current line ends.
+			lastPosition = bestCandidate.b;
+		}
+		
+		// Rebuild the turtle history.
+		for( Line2D line : orderedLines ) {
 			// change color if needed
-			if(head.c!=t.getColor()) {
-				t.setColor(head.c);
+			if(line.c!=t.getColor()) {
+				t.setColor(line.c);
 			}
-			// jump to start of segment
-			t.jumpTo(head.a.x, head.a.y);
-
-			// follow the segment to its end.
-			for( Line2D toAdd : seg.lines ) {
-				t.moveTo(toAdd.b.x, toAdd.b.y);
+			
+			Point2D currentPosition = new Point2D(t.getX(), t.getY());
+			if(distanceBetweenPointsSquared(currentPosition, line.a) > EPSILON_CONNECTED) {
+				// The previous line ends too far from the start point of this line,
+				// need to make a travel with the pen up to the start point of this line.
+				t.jumpTo(line.a.x,line.a.y);
+			} else {
+				// The previous line ends close to the start point of this line,
+				// so there's no need to go to the start point of this line since the pen is practically there.
+				// The start point of this line will be skipped.
 			}
+			// Make a pen down move to the end of this line
+			t.moveTo(line.b.x,line.b.y);
 		}
 
-		Log.message("  Found "+segments.size()+" segments,\n"
-				+ "  "+closed+" closed,\n"
-				+ "  "+sorted+" sorted,\n"
-				+ "  "+matched+" matched\n"
-				+ "  "+flipped+" flipped.");
-		
 		Log.message("  History now "+t.history.size()+" instructions.");
 		turtle.history = t.history;
-		Log.message("checkReorder() end");
+		// TODO show updated drawing time.
+		Log.message("reorder() end");
+	}
+
+	public double distanceBetweenPointsSquared(Turtle.Movement a,Turtle.Movement b) {
+		double dx = a.x-b.x;
+		double dy = a.y-b.y;
+		return MathHelper.lengthSquared(dx, dy); 
 	}
 
 	public double distanceBetweenPointsSquared(Point2D a,Point2D b) {
 		double dx = a.x-b.x;
 		double dy = a.y-b.y;
-		return MathHelper.lengthSquared(dx, dy); 
+		return dx*dx + dy*dy; 
 	}
 	
-	public boolean thesePointsAreTheSame(Point2D a,Point2D b) {
+	public boolean thesePointsAreTheSame(Point2D a,Point2D b,double epsilon) {
 		if(a==b) return true;
 		
 		// close enough ?
 		double dx = a.x-b.x;
-		if(dx>1) return false;
 		double dy = a.y-b.y;
-		if(dy>1) return false;
-		return (MathHelper.lengthSquared(dx, dy)<1e-6); 
+		//if(dx*dx>epsilon*epsilon) return false;
+		//if(dy*dy>epsilon*epsilon) return false;
+		return MathHelper.lengthSquared(dx, dy)<=epsilon*epsilon; 
 	}
 	
 	/**
@@ -291,7 +390,7 @@ public class ArtPipeline {
 	 * @param settings
 	 */
 	public void simplify(Turtle turtle, MakelangeloRobotSettings settings) {
-		Log.message("checkSimplify() begin");
+		Log.message("simplify() begin");
 		ArrayList<Movement> toKeep = new ArrayList<Movement>();
 
 		double minimumStepSize=1;
@@ -339,42 +438,11 @@ public class ArtPipeline {
 		int os = turtle.history.size();
 		int ns = toKeep.size();
 		turtle.history = toKeep;
-		Log.message("checkSimplify() end (was "+os+" is now "+ns+")");
+		Log.message("simplify() end (was "+os+" is now "+ns+")");
 	}
 
 	
 	
-	/**
-	 * Offers to resize your loaded image to fit inside the margins.
-	 * @param turtle
-	 * @param settings
-	 */
-	protected void resizeFit(Turtle turtle, MakelangeloRobotSettings settings) {	
-		Point2D top = new Point2D();
-		Point2D bottom = new Point2D();
-		turtle.getBounds(top, bottom);
-
-		// find the scale
-		double tw = top.x-bottom.x;
-		double th = top.y-bottom.y;
-		double nh=th;
-		double nw=tw;
-		double w = settings.getMarginWidth();
-		double h = settings.getMarginHeight();
-		double ratioW=1,ratioH=1;
-		ratioH = h/nh;
-		ratioW = w/nw;
-		// use < to fit in the page.
-		double ratio = ratioW<ratioH?ratioW:ratioH;
-		
-		// and the translation
-		double x = (top.x+bottom.x)/2;
-		double y = (top.y+bottom.y)/2;
-		
-		// and apply
-		turtle.translate(-x,-y);
-		turtle.scale(ratio,ratio);
-	}
 
 	/**
 	 * 
@@ -399,33 +467,61 @@ public class ArtPipeline {
 	 * @param turtle
 	 * @param settings
 	 */
-	protected void resizeFill(Turtle turtle, MakelangeloRobotSettings settings) {	
+	protected void fitToPaper(Turtle turtle, MakelangeloRobotSettings settings,boolean keepAspect) {
 		Point2D top = new Point2D();
 		Point2D bottom = new Point2D();
-		turtle.getBounds(top, bottom);
+		turtle.getBounds(top, bottom); // image bounds
 		
 		// find the scale
-		double tw = top.x-bottom.x;
-		double th = top.y-bottom.y;
-		double nh=th;
-		double nw=tw;
-		double w = settings.getMarginWidth();
-		double h = settings.getMarginHeight();
+		double iw = top.x-bottom.x; // image width
+		double ih = top.y-bottom.y; // image height
+		double pw = settings.getPaperRight()-settings.getPaperLeft();
+		double ph = settings.getPaperTop()-settings.getPaperBottom();
+		double px = (settings.getPaperRight()+settings.getPaperLeft())*0.5;
+		double py = (settings.getPaperTop()+settings.getPaperBottom())*0.5;
 		double ratioW=1,ratioH=1;
-		ratioH = h/nh;
-		ratioW = w/nw;
+		ratioH = ph/ih;
+		ratioW = pw/iw;
+		ratioH  *= (1-settings.getPaperMargin()*0.01);
+		ratioW  *= (1-settings.getPaperMargin()*0.01);
 		// use > to fill the page.
-		double ratio = ratioW>ratioH?ratioW:ratioH;
 		
 		// and the translation
-		double x = (top.x+bottom.x)/2;
-		double y = (top.y+bottom.y)/2;
+		double ix = (top.x+bottom.x)*0.5;
+		double iy = (top.y+bottom.y)*0.5;
 		
 		// and apply
-		turtle.translate(-x,-y);
-		turtle.scale(ratio,ratio);
+		turtle.translate(-ix,-iy);
+		if(keepAspect == true)
+		{
+			double ratio=Math.min(ratioW, ratioH);
+			turtle.scale(ratio,ratio);
+		}
+		else
+		{
+			turtle.scale(ratioW,ratioH);
+		}
+		turtle.translate(px,py);
 	}
+	private void rotatePicture(Turtle turtle, MakelangeloRobotSettings settings) {
+		int i;
+		double x,y,xn,yn;
+		double ang=settings.getRotation();
+		double refang=settings.getRotationRef();
+		double c=Math.cos((ang-refang)*Math.PI/180.0);
+		double s=Math.sin((ang-refang)*Math.PI/180.0);
 
+		for(i=0;i<turtle.history.size();i++)
+		{
+			x=turtle.history.get(i).x;
+			y=turtle.history.get(i).y;
+			xn=x*c-y*s;
+		    yn=x*s+y*c;
+			turtle.history.get(i).x=xn;
+			turtle.history.get(i).y=yn;
+		}
+		settings.setRotationRef(ang);
+	}
 	/**
 	 * 
 	 * @param turtle
@@ -502,31 +598,75 @@ public class ArtPipeline {
 	 * @param turtle
 	 * @param settings
 	 */
+	MakelangeloRobotSettings last_settings = null;
+	Turtle last_turtle = null;
+
 	public void processTurtle(Turtle turtle, MakelangeloRobotSettings settings) {
+		if(turtle == null) turtle=last_turtle;
+		if(settings == null) settings=last_settings;
+		if(turtle == null) return;
 		if(turtle.history.isEmpty()) return;
+		last_settings=settings;
+		last_turtle=turtle;
 		
 		while(turtle.isLocked()) {
 			try {
 				Thread.sleep(1);
 			} catch (InterruptedException e) {
-				e.printStackTrace();
+				//e.printStackTrace();
+				Log.message("processTurtle wait interrupted.");
+				return;
 			}
 		}
 		turtle.lock();
 		try {
-			if(shouldResizeFill()) resizeFill(turtle,settings);
-			if(shouldResizeFit()) resizeFit(turtle,settings);
+			double ang=settings.getRotation();
+			if(ang != 0.0)
+			{
+				rotatePicture(turtle,settings);
+			}
+			if(shouldResizeFill()) fitToPaper(turtle,settings,false);
+			if(shouldResizeFit()) fitToPaper(turtle,settings,true);
 			if(shouldFlipV()) flipV(turtle,settings);
 			if(shouldFlipH()) flipH(turtle,settings);
 			if(shouldReorder()) reorder(turtle,settings);
 			if(shouldSimplify()) simplify(turtle,settings);
 			if(shouldCrop()) cropToPageMargin(turtle,settings);
+			removeRedundantToolChanges(turtle);
 		}
 		finally {
 			turtle.unlock();
+			notifyListenersTurtleFinished(turtle);
 		}
 	}
 
+	protected void removeRedundantToolChanges(Turtle t) {
+		ArrayList<Turtle.Movement> toKeep = new ArrayList<Turtle.Movement>();
+		int size=t.history.size();
+		for(int i=0;i<size;++i) {
+			Turtle.Movement mi = t.history.get(i);
+			if(mi.type != Turtle.MoveType.TOOL_CHANGE) {
+				toKeep.add(mi);
+				continue;
+			}
+			// we found a tool change.
+			// between this and the next tool change/eof are there any draw commands?
+			boolean found=false;
+			for(int j=i+1;j<size;++j) {
+				Turtle.Movement mj = t.history.get(j);
+				if(mj.type == Turtle.MoveType.TOOL_CHANGE) break;
+				if(mj.type == Turtle.MoveType.DRAW) {
+					found=true;
+					break;
+				}
+			}
+			if(found) {
+				toKeep.add(mi);
+			}
+		}
+		t.history = toKeep;
+	}
+	
 	/**
 	 * 
 	 * @return true or false

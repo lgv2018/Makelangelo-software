@@ -9,7 +9,7 @@ import com.marginallyclever.makelangelo.Translator;
 
 public class Converter_Boxes extends ImageConverter {
 	public static int boxMaxSize=4; // 0.8*5
-	public static float cutoff=0.5f;
+	public static int cutoff=127;
 	
 	@Override
 	public String getName() {
@@ -30,10 +30,10 @@ public class Converter_Boxes extends ImageConverter {
 		return boxMaxSize;
 	}
 	
-	public void setCutoff(float arg0) {
+	public void setCutoff(int arg0) {
 		cutoff = arg0; 
 	}
-	public float getCutoff() {
+	public int getCutoff() {
 		return cutoff;
 	}
 	
@@ -73,9 +73,9 @@ public class Converter_Boxes extends ImageConverter {
 					// read a block of the image and find the average intensity in this block
 					z = img.sample( x, y - halfStep, x + fullStep, y + halfStep );
 					// scale the intensity value
-					double scaleZ =  (255.0f - z) / 255.0f;
+					double scaleZ =  (255.0f - z) / 255.0;
 					double pulseSize = (halfStep) * scaleZ *0.9;
-					if (scaleZ > cutoff) {
+					if (scaleZ > cutoff/255.0) {
 						double xmin = x + halfStep - pulseSize;
 						double xmax = x + halfStep + pulseSize;
 						double ymin = y + halfStep - pulseSize;
@@ -102,7 +102,7 @@ public class Converter_Boxes extends ImageConverter {
 					// scale the intensity value
 					double scaleZ = (255.0f - z) / 255.0f;
 					double pulseSize = (halfStep - 0.5f) * scaleZ;
-					if (pulseSize > 0.1f) {
+					if (pulseSize > cutoff/255.0) {
 						double xmin = x - halfStep - pulseSize;
 						double xmax = x - halfStep + pulseSize;
 						double ymin = y + halfStep - pulseSize;

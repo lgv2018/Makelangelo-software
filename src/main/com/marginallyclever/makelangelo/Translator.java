@@ -24,7 +24,7 @@ import java.util.stream.Stream;
 
 import org.apache.commons.io.FilenameUtils;
 
-import com.marginallyclever.makelangelo.log.Log;
+import com.marginallyclever.convenience.log.Log;
 import com.marginallyclever.makelangelo.preferences.LanguagePreferences;
 import com.marginallyclever.util.MarginallyCleverTranslationXmlFileHelper;
 import com.marginallyclever.util.PreferencesHelper;
@@ -74,10 +74,11 @@ public final class Translator {
 	 *
 	 */
 	static public void start() {
-		// find the english name of the default language.
+		Log.message("starting translator...");
+		
 		Locale locale = Locale.getDefault();
 		defaultLanguage = locale.getDisplayLanguage(Locale.ENGLISH);
-		//Log.message("Default language = "+defaultLanguage);
+		Log.message("Default language = "+defaultLanguage);
 		
 		loadLanguages();
 		loadConfig();
@@ -179,6 +180,7 @@ public final class Translator {
 						try {
 							lang.loadFromInputStream(stream);
 						} catch(Exception e) {
+							Log.error("Failed to load "+actualFilename);
 							// if the xml file is invalid then an exception can occur.
 							// make sure lang is empty in case of a partial-load failure.
 							lang = new TranslatorLanguage();
@@ -224,18 +226,11 @@ public final class Translator {
 	}
 
 	/**
-	 * @param key
-	 * @return the translated value for key
+	 * @param name of key to find in translation list
+	 * @return the translated value for key, or "missing:key".
 	 */
 	static public String get(String key) {
-		String value = null;
-		try {
-			value = languages.get(currentLanguage).get(key);
-		} catch (Exception e) {
-			Log.message("Translated string missing: "+key);
-			e.printStackTrace();
-		}
-		return value;
+		return languages.get(currentLanguage).get(key);
 	}
 
 	/**

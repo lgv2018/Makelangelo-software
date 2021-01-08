@@ -1,51 +1,30 @@
 package com.marginallyclever.artPipeline.generators;
 
-import java.awt.GridLayout;
-
-import javax.swing.JLabel;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
+import java.util.Observable;
 
 import com.marginallyclever.makelangelo.Translator;
-import com.marginallyclever.makelangelo.select.SelectInteger;
+import com.marginallyclever.makelangelo.select.SelectReadOnlyText;
+import com.marginallyclever.makelangelo.select.SelectSlider;
 
-public class Generator_SierpinskiTriangle_Panel extends ImageGeneratorPanel implements DocumentListener {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	
-	SelectInteger field_order;
+public class Generator_SierpinskiTriangle_Panel extends ImageGeneratorPanel {
+	SelectSlider field_order;
 	Generator_SierpinskiTriangle generator;
 	
 	Generator_SierpinskiTriangle_Panel(Generator_SierpinskiTriangle generator) {
+		super();
+		
 		this.generator = generator;
 		
-		field_order = new SelectInteger(Generator_SierpinskiTriangle.getOrder());
-		field_order.getDocument().addDocumentListener(this);
-		setLayout(new GridLayout(0, 1));
-		add(new JLabel(Translator.get("HilbertCurveOrder")));
-		add(field_order);
-
+		add(field_order = new SelectSlider(Translator.get("HilbertCurveOrder"),10,1,Generator_SierpinskiTriangle.getOrder()));
+		add(new SelectReadOnlyText("<a href='https://en.wikipedia.org/wiki/Sierpi%C5%84ski_triangle'>Learn more</a>"));
+		finish();
 	}
 
 	@Override
-	public void changedUpdate(DocumentEvent arg0) {
-		validate();
-	}
-
-	@Override
-	public void insertUpdate(DocumentEvent arg0) {
-		validate();
-	}
-
-	@Override
-	public void removeUpdate(DocumentEvent arg0) {
-		validate();
-	}
-	
-	public void validate() {
-		int newOrder = ((Number)field_order.getValue()).intValue();
+	public void update(Observable o, Object arg) {
+		super.update(o, arg);
+		
+		int newOrder = field_order.getValue();
 		if(newOrder<1) newOrder=1;
 		
 		if(newOrder != Generator_SierpinskiTriangle.getOrder()) {

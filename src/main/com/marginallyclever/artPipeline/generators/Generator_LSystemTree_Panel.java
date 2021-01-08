@@ -1,72 +1,42 @@
 package com.marginallyclever.artPipeline.generators;
 
-import java.awt.GridLayout;
-import javax.swing.JLabel;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
+import java.util.Observable;
 
 import com.marginallyclever.makelangelo.Translator;
-import com.marginallyclever.makelangelo.select.SelectFloat;
-import com.marginallyclever.makelangelo.select.SelectInteger;
+import com.marginallyclever.makelangelo.select.SelectReadOnlyText;
+import com.marginallyclever.makelangelo.select.SelectSlider;
 
-public class Generator_LSystemTree_Panel extends ImageGeneratorPanel implements DocumentListener {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	
-	SelectInteger field_order;
-	SelectInteger field_branches;
-	SelectFloat field_orderScale;
-	SelectFloat field_angle;
-	Generator_LSystemTree generator;
-	
+public class Generator_LSystemTree_Panel extends ImageGeneratorPanel {
+	private SelectSlider field_order;
+	private SelectSlider field_branches;
+	private SelectSlider field_orderScale;
+	private SelectSlider field_angle;
+	private SelectSlider field_noise;
+	private Generator_LSystemTree generator;
 	
 	Generator_LSystemTree_Panel(Generator_LSystemTree generator) {
+		super();
+		
 		this.generator = generator;
 
-		field_order = new SelectInteger(generator.getOrder());
-		field_branches = new SelectInteger(generator.getBranches());
-		field_orderScale = new SelectFloat((float)generator.getScale());
-		field_angle = new SelectFloat((float)generator.getAngle());
+		add(field_order      = new SelectSlider(Translator.get("HilbertCurveOrder"),10,1,generator.getOrder()));
+		add(field_branches   = new SelectSlider(Translator.get("LSystemBranches"),8,1,generator.getBranches()));
+		add(field_orderScale = new SelectSlider(Translator.get("LSystemOrderScale"),100,1,(int)(generator.getScale()*100)));
+		add(field_angle      = new SelectSlider(Translator.get("LSystemAngle"),360,1,(int)generator.getAngle()));
+		add(field_noise      = new SelectSlider(Translator.get("LSystemNoise"),100,0,(int)generator.getNoise()));
+		add(new SelectReadOnlyText("<a href='https://en.wikipedia.org/wiki/L-system'>Learn more</a>"));
+		finish();
+	}
 
-		setLayout(new GridLayout(0, 1));
-		add(new JLabel(Translator.get("HilbertCurveOrder")));
-		add(field_order);
-		add(new JLabel(Translator.get("LSystemBranches")));
-		add(field_branches);
-		add(new JLabel(Translator.get("LSystemOrderScale")));
-		add(field_orderScale);
-		add(new JLabel(Translator.get("LSystemAngle")));
-		add(field_angle);
+	@Override
+	public void update(Observable o, Object arg) {
+		super.update(o, arg);
 		
-		field_order.getDocument().addDocumentListener(this);
-		field_branches.getDocument().addDocumentListener(this);
-		field_orderScale.getDocument().addDocumentListener(this);
-		field_angle.getDocument().addDocumentListener(this);
-	}
-
-	@Override
-	public void changedUpdate(DocumentEvent arg0) {
-		validate();
-	}
-
-	@Override
-	public void insertUpdate(DocumentEvent arg0) {
-		validate();
-	}
-
-	@Override
-	public void removeUpdate(DocumentEvent arg0) {
-		validate();
-	}
-	
-	@Override
-	public void validate() {
-		generator.setOrder(((Number)field_order.getValue()).intValue());
-		generator.setBranches(((Number)field_branches.getValue()).intValue());
-		generator.setScale(((Number)field_orderScale.getValue()).doubleValue());
-		generator.setAngle(((Number)field_angle.getValue()).doubleValue());
+		generator.setOrder(field_order.getValue());
+		generator.setBranches(field_branches.getValue());
+		generator.setScale(field_orderScale.getValue()/100.0f);
+		generator.setAngle(field_angle.getValue());
+		generator.setNoise(field_noise.getValue());
 		makelangeloRobotPanel.regenerate(generator);
 	}
 }

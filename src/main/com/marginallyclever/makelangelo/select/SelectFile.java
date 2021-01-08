@@ -1,7 +1,6 @@
 package com.marginallyclever.makelangelo.select;
 
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
+import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
@@ -11,60 +10,67 @@ import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 
-import com.marginallyclever.makelangelo.Translator;
-
-public class SelectFile extends JPanel implements ActionListener {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1328306913825662751L;
+/**
+ * A file selection dialog
+ * @author Dan Royer
+ * @since 7.24.0
+ */
+public class SelectFile extends Select {
 	private JLabel label;
-	private JTextField fieldValue;
+	private JTextField field;
 	private JButton chooseButton;
 	
 	public SelectFile(String labelValue,String defaultValue) {
-		this.setLayout(new GridBagLayout());
-		GridBagConstraints labelConstraint = new GridBagConstraints();
-		GridBagConstraints fieldConstraint = new GridBagConstraints();
-		GridBagConstraints buttonConstraint = new GridBagConstraints();
-
-		labelConstraint.anchor = GridBagConstraints.EAST;
-		labelConstraint.fill = GridBagConstraints.HORIZONTAL;
-		labelConstraint.gridwidth = 4;
-		labelConstraint.gridx = 0;
-		labelConstraint.gridy=0;
+		super();
 		
-		fieldConstraint.anchor = GridBagConstraints.EAST;
-		fieldConstraint.gridwidth = labelConstraint.gridwidth-1;
-		fieldConstraint.gridx = 0;
+		label = new JLabel(labelValue,JLabel.LEADING);
 
-		buttonConstraint.anchor = GridBagConstraints.EAST;
-		buttonConstraint.gridwidth = 1;
-		buttonConstraint.gridx = fieldConstraint.gridwidth + fieldConstraint.gridx;
+		field = new JTextField(defaultValue, 16);
+		field.getDocument().addDocumentListener(new DocumentListener() {
+			@Override
+			public void insertUpdate(DocumentEvent e) {
+				validate();
+			}
 
-		fieldConstraint.gridy=buttonConstraint.gridy=1;
+			@Override
+			public void removeUpdate(DocumentEvent e) {
+				validate();
+			}
 
-		label = new JLabel(Translator.get(labelValue));
-		this.add(label, labelConstraint);
+			@Override
+			public void changedUpdate(DocumentEvent e) {
+				validate();
+			}
+			
+			void validate() {
+				setChanged();
+				notifyObservers();
+			}
+		});
+		//field.setBorder(new LineBorder(Color.BLACK));
 
-		fieldValue = new JTextField(defaultValue, 32);
-		this.add(fieldValue, fieldConstraint);
-
-		chooseButton = new JButton(Translator.get("Choose"));
-		chooseButton.addActionListener(this);
-		this.add(chooseButton, buttonConstraint);
-	}
-
-	@Override
-	public void actionPerformed(ActionEvent e) {
-		fieldValue.setText(selectFile(fieldValue.getText()));
+		chooseButton = new JButton("...");
+		chooseButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				field.setText(selectFile(field.getText()));
+			}
+		});
+		
+		JPanel panel2 = new JPanel(new BorderLayout());
+		panel2.add(field,BorderLayout.LINE_END);
+		
+		panel.add(label,BorderLayout.LINE_START);
+		panel.add(panel2,BorderLayout.CENTER);
+		panel.add(chooseButton,BorderLayout.LINE_END);
 	}
 	
 	public String getText() {
-		return fieldValue.getText();
+		return field.getText();
 	}
-	
 	
 	static private String selectFile(String cancelValue) {
 		JFileChooser choose = new JFileChooser();
@@ -75,5 +81,13 @@ public class SelectFile extends JPanel implements ActionListener {
 		} else {
 			return cancelValue;
 		}
+	}
+
+	/**
+	 * Will notify observers that the value has changed.
+	 * @param string
+	 */
+	public void setText(String string) {
+		field.setText(string);
 	}
 }

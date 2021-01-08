@@ -24,13 +24,18 @@ import com.marginallyclever.makelangeloRobot.MakelangeloRobotDecorator;
  */
 public abstract class ImageConverter extends ImageManipulator implements MakelangeloRobotDecorator {
 	protected TransformedImage sourceImage;
-	protected LoadAndSaveImage loadAndSave;
 	protected boolean keepIterating=false;
 	protected Texture texture = null;
 
+	public static LoadAndSaveImage loadAndSaveImage;
 
-	public void setLoadAndSave(LoadAndSaveImage arg0) {
-		loadAndSave = arg0;
+	public void restart() {
+		if(!keepIterating) {
+			if(loadAndSaveImage!=null) {
+				loadAndSaveImage.reconvert();
+			}
+			return;
+		}
 	}
 	
 	/**
@@ -72,7 +77,7 @@ public abstract class ImageConverter extends ImageManipulator implements Makelan
 	 * draw the results as the calculation is being performed.
 	 */
 	public void render(GL2 gl2) {
-		if(texture==null ) {
+		if( texture==null ) {
 			if( sourceImage!=null) {
 				texture = AWTTextureIO.newTexture(gl2.getGLProfile(), sourceImage.getSourceImage(), false);
 			}
@@ -99,7 +104,6 @@ public abstract class ImageConverter extends ImageManipulator implements Makelan
 		}	
 	}
 	
-
 	/**
 	 * Drag the pen across the paper from p0 to p1, sampling (p1-p0)/stepSize times.  If the intensity of img
 	 * at a sample location is greater than the channelCutff, raise the pen.  Print the gcode results to out.
